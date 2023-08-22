@@ -1,6 +1,9 @@
 # TOAR: downloading chemical data
 
-# This script downloads all available DMA8 chemical data for ozone, NO, NO2 and PM2.5 on a daily scale from the TOAR (V1) database for a particular country. The script also downloads and appends station attributes for each station in the country being downloaded.
+# This script downloads all available DMA8 chemical data for ozone, NO, NO2 and PM2.5 
+# on a daily scale from the TOAR (V1) database for a particular country. 
+# The script also downloads and appends station attributes for each station 
+# in the country being downloaded.
 
 # key things: 
 # can select dma8eu or dma8eu_strict
@@ -9,13 +12,9 @@
 # Our imports for this script
 
 import pandas as pd
-import numpy as np
-import datetime
-from datetime import datetime, timedelta
 
 from urllib.request import urlopen
 import json
-import glob
 import os
 from functools import reduce
 
@@ -54,12 +53,15 @@ response = urlopen(BASEURL + URL1).read().decode('utf-8')
 print("response = ", response[:200], " ... ")
 metadata = json.loads(response)
 
-# Here we are downloading all dataseries for our specified search. This takes a while to run.
+# Here we are downloading all dataseries for our specified search. 
+# This takes a while to run.
 
 # create an empty dataframe...
 df_test = pd.DataFrame()
 
-# loop to download the dataseries for the variable of interest, at all stations where it is present, alongside station metadata and static attributes for the station that the variable dataseries is coming from.
+# loop to download the dataseries for the variable of interest, at all stations where 
+# it is present, alongside station metadata and static attributes for 
+# the station that the variable dataseries is coming from.
 
 for s in metadata:
     # find all the dataseries
@@ -77,10 +79,11 @@ for s in metadata:
         print(data['metadata']['parameter_name'])
         print(data['metadata']['station_name'], data['metadata']['station_country'])
             
-        # may need to change between average values and dma8, depending on whether we are looking for env or dma8
+        # change between average values and dma8, 
+        # depending on whether we are looking for env or dma8
         new_row = pd.DataFrame({'series_id': series, 
                        #'average_values': data['mean'], 
-                       'dma8': data['dma8eu'], # choose here whether we have dma8eu or dma8eu_strict
+                       'dma8': data['dma8eu'], # choose here dma8eu or dma8eu_strict
                        'datetime':data['datetime'], 
                        #'data_capture': data['data_capture'],
                        'country':data['metadata']['station_country'], 
@@ -91,8 +94,10 @@ for s in metadata:
                        'station_rel_etopo_alt':data['metadata']['station_etopo_relative_alt'],
                        'lat':s[4],'lon':s[5],'nox_emi':data['metadata']['station_nox_emissions'], 
                        'omi_nox':data['metadata']['station_omi_no2_column'],
-                       'station_name':data['metadata']['station_name'], 'station_type':data['metadata']['station_type'],
-                       'alt':data['metadata']['station_alt'], 'landcover':data['metadata']['station_dominant_landcover'],
+                       'station_name':data['metadata']['station_name'], 
+                       'station_type':data['metadata']['station_type'],
+                       'alt':data['metadata']['station_alt'], 
+                       'landcover':data['metadata']['station_dominant_landcover'],
                        'pop_density':data['metadata']['station_population_density'],
                        'max_5km_pop_density':data['metadata']['station_max_population_density_5km'],
                        'max_25km_pop_density':data['metadata']['station_max_population_density_25km'],
@@ -101,7 +106,8 @@ for s in metadata:
                        'toar_category':data['metadata']['station_toar_category'], 
                        'measurement_method':data['metadata']['parameter_measurement_method']})
         #print(new_row)
-            # append all these individual series to the initially empty dataframe that was instantiated earlier
+            # append all these individual series to the initially empty dataframe 
+            # that was instantiated earlier
         #df_test = df_test.append(new_row, ignore_index = True)
         df_test = pd.concat([df_test, new_row], axis=0, ignore_index = True)
         
@@ -116,9 +122,15 @@ df_o3['o3'] = df_o3['dma8']
 
 # drop unnecessary columns...
 
-df_o3_dropped_cols = df_o3.drop(['dma8', 'series_id', 'variable_name', 'variable_label', 'units', 'measurement_method'], axis=1)
-df_no2_dropped_cols = df_no2.drop(['dma8', 'series_id', 'variable_name', 'variable_label', 'units', 'measurement_method'], axis=1)
-df_no_dropped_cols = df_no.drop(['dma8', 'series_id', 'variable_name', 'variable_label', 'units', 'measurement_method'], axis=1)
+df_o3_dropped_cols = df_o3.drop(['dma8', 'series_id', 'variable_name', 
+                                 'variable_label', 'units', 'measurement_method'], 
+                                 axis=1)
+df_no2_dropped_cols = df_no2.drop(['dma8', 'series_id', 'variable_name', 
+                                   'variable_label', 'units', 'measurement_method'], 
+                                   axis=1)
+df_no_dropped_cols = df_no.drop(['dma8', 'series_id', 'variable_name', 
+                                 'variable_label', 'units', 'measurement_method'], 
+                                 axis=1)
 
 try:
     dfs = [df_o3_dropped_cols, df_no2_dropped_cols, df_no_dropped_cols]
@@ -127,10 +139,20 @@ except:
     
     
 #merge all DataFrames into one
-final_df = reduce(lambda  left,right: pd.merge(left,right,on=['datetime', 'country', 'station_name', 'lat', 'lon', 'alt', 'station_etopo_alt',  
-                                                              'station_rel_etopo_alt', 'station_type', 	'landcover', 
-                                                              'toar_category', 'pop_density', 'max_5km_pop_density', 'max_25km_pop_density', 
-                                                              'nightlight_1km', 'nightlight_max_25km', 'nox_emi', 'omi_nox'],
+final_df = reduce(lambda  left,right: pd.merge(left,right,on=['datetime', 'country', 
+                                                              'station_name', 'lat', 
+                                                              'lon', 'alt', 
+                                                              'station_etopo_alt',  
+                                                              'station_rel_etopo_alt', 
+                                                              'station_type', 	
+                                                              'landcover', 
+                                                              'toar_category', 
+                                                              'pop_density', 
+                                                              'max_5km_pop_density', 
+                                                              'max_25km_pop_density', 
+                                                              'nightlight_1km', 
+                                                              'nightlight_max_25km', 
+                                                              'nox_emi', 'omi_nox'],
                                             how='outer'), dfs)
 
 
@@ -138,7 +160,8 @@ final_df = reduce(lambda  left,right: pd.merge(left,right,on=['datetime', 'count
 
 final_df_sorted = final_df.sort_values(['station_name', 'datetime'], ignore_index=True)
 
-final_df_sorted['datetime'] = pd.to_datetime(final_df_sorted['datetime'], format='%Y-%m-%d')
+final_df_sorted['datetime'] = pd.to_datetime(final_df_sorted['datetime'], 
+                                             format='%Y-%m-%d')
 
 #final_df_sorted = final_df_sorted.replace(-1.0, np.nan)
 #final_df_sorted = final_df_sorted.replace(-999.0, np.nan)

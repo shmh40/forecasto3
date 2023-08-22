@@ -3,51 +3,42 @@
 
 # imports
 
-# wandb
-import wandb
-
-# basic imports
-from matplotlib import pyplot as plt
-import numpy as np
-import pandas as pd
-import fsspec
-import glob
-import copy
-from pathlib import Path
+# # basic imports
 import warnings
-import os
 from typing import Dict, List, Tuple
 
-warnings.filterwarnings("ignore")  # avoid printing out absolute paths
+import numpy as np
+import pandas as pd
+
 
 # pytorch lightning and forecasting imports
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
-from pytorch_lightning.loggers import TensorBoardLogger
-
 import torch
-from torch import nn
-
-from pytorch_forecasting import Baseline, TemporalFusionTransformer, TimeSeriesDataSet
-from pytorch_forecasting.models import BaseModel
-from pytorch_forecasting.models.base_model import BaseModelWithCovariates
-from pytorch_forecasting.models.base_model import AutoRegressiveBaseModelWithCovariates
-from pytorch_forecasting.models.nn import LSTM
-
-from pytorch_forecasting.data import GroupNormalizer, TorchNormalizer
-from pytorch_forecasting.metrics import MAE, MAPE, SMAPE, RMSE, PoissonLoss, QuantileLoss, R2
-from pytorch_forecasting.models.temporal_fusion_transformer.tuning import optimize_hyperparameters
-from pytorch_forecasting.models.nn import MultiEmbedding
+from pytorch_forecasting import TimeSeriesDataSet
+from pytorch_forecasting.data import TorchNormalizer
+from pytorch_forecasting.metrics import (
+    MAE,
+    MAPE,
+    R2,
+    RMSE,
+    SMAPE,
+)
+from pytorch_forecasting.models.base_model import (
+    AutoRegressiveBaseModelWithCovariates,
+)
+from pytorch_forecasting.models.nn import LSTM, MultiEmbedding
+from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
 
 # pytorch lightning + wandb
-
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning import Trainer
 
 ## import r2_score from scikit-learn
-from sklearn.metrics import r2_score
-from sklearn.preprocessing import PowerTransformer
-from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
+from sklearn.preprocessing import (
+    RobustScaler,
+)
+from torch import nn
+
+warnings.filterwarnings("ignore")  # avoid printing out absolute paths
 
 pd.set_option('max_columns', None)
 
@@ -212,8 +203,11 @@ max_encoder_length = 21
 def split_data_by_year(data, last_day_of_training):
     
     '''
-    This function automates the splitting of data by years, into train, validation and test sets.
-    last_day_of_training is a string representing a date which is the last day of the training set, of the form 'YYYY-MM-DD' e.g. '2006-12-31' for the last day of 2006.
+    This function automates the splitting of data by years, into train, validation and 
+    test sets.
+    last_day_of_training is a string representing a date which is the last day 
+    of the training set, of the form 'YYYY-MM-DD' 
+    e.g. '2006-12-31' for the last day of 2006.
     
     '''
     
@@ -251,7 +245,9 @@ def split_data_by_year(data, last_day_of_training):
     return(train_data_raw, val_data_raw, test_data_raw)
 
 
-# set the year here for the last date of training...we then take the year after for validation, and then the year after that for testing, then any data after the testing year is also taken as training data
+# set the year here for the last date of training...
+# we then take the year after for validation, and then the year after that for testing,
+# then any data after the testing year is also taken as training data
 
 print('Splitting the dataset')
 train_data_raw, val_data_raw, test_data_raw = split_data_by_year(data, '2010-12-31')
@@ -274,28 +270,35 @@ training = TimeSeriesDataSet(
     time_varying_known_categoricals=[],
     variable_groups={},  # group of categorical variables can be treated as one variable
     #time_varying_known_reals=["time_idx", "cloudcover", "relhum", "press", "temp", "v", "u", "pblheight"] , 
-    time_varying_known_reals=["raw_time_idx", "cloudcover", "relhum", "press", "temp", "v", "u", "pblheight"], ## this can be altered to do future prediction...by moving these to unknown reals
+    time_varying_known_reals=["raw_time_idx", "cloudcover", "relhum", "press", 
+                              "temp", "v", "u", "pblheight"], ## this can be altered to do future prediction...by moving these to unknown reals
     time_varying_unknown_categoricals=[],  
     time_varying_unknown_reals=["o3",], # these can be returned to time_varying_known_reals to do infilling
-    target_normalizer=TorchNormalizer(method='robust', center=False, transformation="log1p"),
-    scalers={"cloudcover": RobustScaler(), "temp": RobustScaler(), "press": RobustScaler(), "relhum": RobustScaler(),
-            "pblheight": RobustScaler(), "u": RobustScaler(), "v": RobustScaler()}, 
+    target_normalizer=TorchNormalizer(method='robust', center=False, 
+                                      transformation="log1p"),
+    scalers={"cloudcover": RobustScaler(), "temp": RobustScaler(), 
+             "press": RobustScaler(), "relhum": RobustScaler(), 
+             "pblheight": RobustScaler(), "u": RobustScaler(),
+             "v": RobustScaler()}, 
     add_relative_time_idx=True, 
     add_target_scales=True, 
     add_encoder_length=True,
     allow_missing_timesteps=None # or True, None with Seam8's edit https://github.com/jdb78/pytorch-forecasting/issues/1132
 )
 
-# create validation set (predict=True) which means to predict the last max_prediction_length points in time
+# create validation set (predict=True) which means to 
+# predict the last max_prediction_length points in time
 # for each series
-validation = TimeSeriesDataSet.from_dataset(training, val_data_raw, predict=True, stop_randomization=True)
+validation = TimeSeriesDataSet.from_dataset(training, val_data_raw, predict=True, 
+                                            stop_randomization=True)
 
 num_workers = 4
 batch_size = 32  # set this between 32 to 128 - if we get thread problems, bus errors...
 
-train_dataloader = training.to_dataloader(train=True, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
-val_dataloader = validation.to_dataloader(train=False, batch_size=batch_size * 10, num_workers=num_workers, pin_memory=True)   # batch_size*10 ?
-
+train_dataloader = training.to_dataloader(train=True, batch_size=batch_size, 
+                                          num_workers=num_workers, pin_memory=True)
+val_dataloader = validation.to_dataloader(train=False, batch_size=batch_size * 10, 
+                                          num_workers=num_workers, pin_memory=True) 
 
 print('****** Which scalers are we using? ********')
 print('Feature scaling:', training.scalers)
@@ -311,7 +314,8 @@ print(model.summarize("full"))
 
 # configure network and trainer
 # we can set early stopping here...
-early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=1e-4, patience=25, verbose=False, mode="min")
+early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=1e-4, patience=25, 
+                                    verbose=False, mode="min")
 lr_logger = LearningRateMonitor()  # log the learning rate
 #logger = TensorBoardLogger("lightning_logs")  # logging results to a tensorboard
 

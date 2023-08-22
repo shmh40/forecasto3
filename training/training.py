@@ -1,57 +1,48 @@
 # Script to train TFT on cleaned TOAR data (produced from preprocessing) from UK, France and Italy.
 
-### This script can also be used to exclude the static features, by emptying the static_reals and static_categoricals when defining the training Time SeriesDataSet.
+## This script can also be used to exclude the static features, by emptying the 
+## static_reals and static_categoricals when defining the training Time SeriesDataSet.
 
 # N.B.
-# To run this excluding sequences with missing timesteps during the 21 look-back period, we use None for missing_timesteps here. 
+# To run this excluding sequences with missing timesteps during the 21 look-back period,
+# we use None for missing_timesteps here. 
 # This is implemented with Seam8's edit https://github.com/jdb78/pytorch-forecasting/issues/1132
 
 # Imports:
 
-# import weights and biases - experiments can be logged with WandB easily with this script.
+# import weights and biases - experiments can be logged with WandB with this script.
 import wandb
 
 # basic imports
-from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
-import fsspec
-import glob
-import copy
-from pathlib import Path
 import warnings
-import os
-
-warnings.filterwarnings("ignore")  # avoid printing out absolute paths
 
 # pytorch lightning and forecasting imports
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
-from pytorch_lightning.loggers import TensorBoardLogger
 
 import torch
-from pytorch_forecasting import Baseline, TemporalFusionTransformer, TimeSeriesDataSet
-from pytorch_forecasting.data import GroupNormalizer, TorchNormalizer
-from pytorch_forecasting.metrics import MAE, MAPE, SMAPE, RMSE, PoissonLoss, QuantileLoss
+from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet
+from pytorch_forecasting.data import TorchNormalizer
+from pytorch_forecasting.metrics import MAE, MAPE, SMAPE, RMSE, QuantileLoss
 ## try to import R2
 from pytorch_forecasting.metrics import R2
 
-from pytorch_forecasting.models.temporal_fusion_transformer.tuning import optimize_hyperparameters
-from pytorch_lightning.plugins import DDPPlugin
-from pytorch_lightning import Trainer
-
-from sklearn.preprocessing import PowerTransformer, QuantileTransformer
-from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
+# robust scaler
+from sklearn.preprocessing import RobustScaler
 
 # pytorch lightning + wandb
-
 from pytorch_lightning.loggers import WandbLogger
+
+warnings.filterwarnings("ignore")  # avoid printing out absolute paths
+
 
 print('********************** Imports done ***********************')
 
 # optional wandb login
-#wandb.login()
-#wandb.init(project="XXX", entity="YYY")
+wandb.login()
+wandb.init(project="XXX", entity="YYY")
 
 # define the wandb logger
 wandb_logger = WandbLogger(project="XXX", entity="YYY")
@@ -79,8 +70,12 @@ max_encoder_length = 21
 def split_data_by_year(data, last_day_of_training):
     
     '''
-    This function automates the splitting of data by years, into train, validation and test sets.
-    last_day_of_training is a string representing a date which is the last day of the training set, of the form 'YYYY-MM-DD' e.g. '2006-12-31' for the last day of 2006.
+    This function automates the splitting of data by years, into train, validation and 
+    test sets.
+
+    last_day_of_training is a string representing a date which is the last day 
+    of the training set, of the form 'YYYY-MM-DD' e.g. '2006-12-31' for the last day of 
+    2006.
     
     '''
     
@@ -114,12 +109,13 @@ def split_data_by_year(data, last_day_of_training):
     print('Val data percentage:', val_data_raw.shape[0]/(train_data_raw.shape[0]+val_data_raw.shape[0]+test_data_raw.shape[0]))
     print('Test data percentage:', test_data_raw.shape[0]/(train_data_raw.shape[0]+val_data_raw.shape[0]+test_data_raw.shape[0]))
     
-
     return(train_data_raw, val_data_raw, test_data_raw)
 
 
-# set the year here for the last date of training data, then the year two years after is set as test data.
-# for example, 2009-12-31 as the last day of training, then the validation year is 2010, test year is 2011, unseen during training. Any data after the 
+# set the year here for the last date of training data, 
+# then the year two years after is set as test data.
+# for example, 2009-12-31 as the last day of training, then the validation year is 2010,
+# test year is 2011, unseen during training. Any data after the 
 # testing year is also used as training data
 print('Splitting the dataset')
 train_data_raw, val_data_raw, test_data_raw = split_data_by_year(data, '2009-12-31')

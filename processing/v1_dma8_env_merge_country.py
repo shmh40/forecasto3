@@ -1,22 +1,20 @@
 # TOAR: merging the downloaded environmental and chemical data.
 
-# This script merges the environmental and chemical data downloaded from the v1_scrape_dma8 and v1_scrape_env scripts, putting them into a single dataframe, one with nans and one without nans. The dataframes include datetimes and station attributes. 
+# This script merges the environmental and chemical data downloaded from 
+# the v1_scrape_dma8 and v1_scrape_env scripts, putting them into a single dataframe, 
+# one with nans and one without nans. 
+# The dataframes include datetimes and station attributes. 
 
 # Our imports for this script
 
 import pandas as pd
 import numpy as np
-import datetime
-from datetime import datetime, timedelta
 
-from urllib.request import urlopen
-import json
-import glob
-import os
 from functools import reduce
 
 # Need to swap the country in here, or create a list and loop through.
-# Need to have dma8 or dma8_non_strict for the chemical data, defined by the string sampling here...
+# Need to have dma8 or dma8_non_strict for the chemical data, 
+# defined by the string sampling here.
 
 country = 'Switzerland'
 sampling = 'dma8_non_strict' # or 'dma8'

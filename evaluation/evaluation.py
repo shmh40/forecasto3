@@ -7,56 +7,27 @@
 
 # imports
 
-# wandb
-import wandb
+import warnings
 
 # basic imports
-from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
-import fsspec
-import glob
-import copy
-from pathlib import Path
-import warnings
-import os
+import torch
+
+from matplotlib import pyplot as plt
+from pytorch_forecasting import (Baseline, TemporalFusionTransformer,
+                                 TimeSeriesDataSet)
+from pytorch_forecasting.data import TorchNormalizer
+from scipy import stats
+
+## scikit-learn imports
+from sklearn.metrics import (mean_absolute_error,
+                             mean_absolute_percentage_error,
+                             mean_squared_error, r2_score)
+from sklearn.preprocessing import RobustScaler
 
 warnings.filterwarnings("ignore")  # avoid printing out absolute paths
 
-
-# pytorch lightning and forecasting imports
-
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
-from pytorch_lightning.loggers import TensorBoardLogger
-
-import torch
-from pytorch_forecasting import Baseline, TemporalFusionTransformer, TimeSeriesDataSet
-from pytorch_forecasting.data import GroupNormalizer, TorchNormalizer
-from pytorch_forecasting.metrics import MAE, MAPE, SMAPE, RMSE, PoissonLoss, QuantileLoss, R2
-from pytorch_forecasting.models.temporal_fusion_transformer.tuning import optimize_hyperparameters
-
-# pytorch lightning + wandb
-
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning import Trainer
-
-
-## scikit-learn imports
-import sklearn
-from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
-from sklearn.metrics import r2_score
-from sklearn.ensemble import RandomForestRegressor
-from sklearn import preprocessing
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import Ridge
-
-from sklearn.preprocessing import PowerTransformer
-from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
-
-
-from scipy import stats
 
 
 # set options for matplotlib and pandas
@@ -65,7 +36,8 @@ from scipy import stats
 
 pd.set_option('max_columns', None)
 
-## Read in the data for the UK, France and Italy which serves as training and main test data
+# Read in the data for the UK, France and Italy 
+# which serves as training and main test data
 
 ## here we have the data scraped and cleaned from TOAR.
 data = pd.read_csv('path_to_data.csv')
@@ -90,14 +62,20 @@ max_prediction_length = 4
 # choose look-back period
 max_encoder_length = 21
 
-## Defining functions that we use to load datasets and evaluate performance.
-#  we have robust scaling for all variables, including ozone, and we log transform ozone and pblheight
+
+
+# Defining functions that we use to load datasets and evaluate performance.
+# we have robust scaling for all variables, including ozone, 
+# and we log transform ozone and pblheight
 def load_prepare_ukfrit_data_for_year_robust_features(data, last_day_of_training):
     
     '''
-    This function automates the splitting of data by years, into train, validation and test sets.
-    last_day_of_training is a string representing a date which is the last day of the training set, of the form 'YYYY-MM-DD' e.g. '2006-12-31' for the last day of 2006.
-    The function returns a the training TimeSeriesDataSet, and the train, val and test DataLoaders
+    This function automates the splitting of data by years, into train, validation and 
+    test sets.
+    last_day_of_training is a string representing a date which is the last day of the 
+    training set, of the form 'YYYY-MM-DD' e.g. '2006-12-31' for the last day of 2006.
+    The function returns a the training TimeSeriesDataSet, and the train, val and 
+    test DataLoaders
     
     '''
 
@@ -148,17 +126,22 @@ def load_prepare_ukfrit_data_for_year_robust_features(data, last_day_of_training
         max_prediction_length=max_prediction_length,
         static_categoricals=["station_type"],
         static_reals=["landcover", "pop_density", "nox_emi", "alt", 
-                    "station_etopo_alt", "station_rel_etopo_alt", "omi_nox", "max_5km_pop_density",
-                    "max_25km_pop_density", "nightlight_1km", "nightlight_max_25km", "toar_category"],
+                    "station_etopo_alt", "station_rel_etopo_alt", "omi_nox", 
+                    "max_5km_pop_density",
+                    "max_25km_pop_density", "nightlight_1km", 
+                    "nightlight_max_25km", "toar_category"],
         time_varying_known_categoricals=[],
         variable_groups={},  # group of categorical variables can be treated as one variable
         #time_varying_known_reals=["time_idx", "cloudcover", "relhum", "press", "temp", "v", "u", "pblheight"] , 
-        time_varying_known_reals=["raw_time_idx", "cloudcover", "relhum", "press", "temp", "v", "u", "pblheight"], 
+        time_varying_known_reals=["raw_time_idx", "cloudcover", "relhum", "press", 
+                                  "temp", "v", "u", "pblheight"], 
         time_varying_unknown_categoricals=[],  ## this can be altered to do future prediction...by moving these to unknown reals
         time_varying_unknown_reals=["o3",],
         # possible options for target_normalizer here
-        target_normalizer=TorchNormalizer(method='robust', center=False, transformation="log1p"),  # use softplus and normalize across the whole train set  
-        scalers={"cloudcover": RobustScaler(), "temp": RobustScaler(), "press": RobustScaler(), "relhum": RobustScaler(),
+        target_normalizer=TorchNormalizer(method='robust', center=False, 
+                                          transformation="log1p"),  # use softplus and normalize across the whole train set  
+        scalers={"cloudcover": RobustScaler(), "temp": RobustScaler(), 
+                 "press": RobustScaler(), "relhum": RobustScaler(),
             "pblheight": RobustScaler(), "u": RobustScaler(), "v": RobustScaler()},  
         add_relative_time_idx=True,
         add_target_scales=True,
@@ -170,59 +153,30 @@ def load_prepare_ukfrit_data_for_year_robust_features(data, last_day_of_training
     print('Feature scaling:', training.scalers)
     print('Target scaling:', training.target_normalizer)
     
-    # trying with new method to create dataset with the same scaling as seen in the training set...
+    validation = TimeSeriesDataSet.from_dataset(training, val_data_raw, predict=False, 
+                                                stop_randomization=True)
+    testing = TimeSeriesDataSet.from_dataset(training, test_data_raw, predict=False, 
+                                             stop_randomization=True)
 
-    validation = TimeSeriesDataSet.from_dataset(training, val_data_raw, predict=False, stop_randomization=True)
-    testing = TimeSeriesDataSet.from_dataset(training, test_data_raw, predict=False, stop_randomization=True)
-
-    train_dataloader = training.to_dataloader(train=True, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
-    val_dataloader = validation.to_dataloader(train=False, batch_size=batch_size * 10, num_workers=num_workers, pin_memory=True)
-    test_dataloader = testing.to_dataloader(train=False, batch_size=batch_size * 10, num_workers=num_workers, pin_memory=True)
+    train_dataloader = training.to_dataloader(train=True, batch_size=batch_size, 
+                                              num_workers=num_workers, pin_memory=True)
+    val_dataloader = validation.to_dataloader(train=False, batch_size=batch_size * 10, 
+                                              num_workers=num_workers, pin_memory=True)
+    test_dataloader = testing.to_dataloader(train=False, batch_size=batch_size * 10, 
+                                            num_workers=num_workers, pin_memory=True)
     
     return training, train_dataloader, val_dataloader, test_dataloader    
-
-# this function for all our test countries
-
-def load_prepare_test_country_data(country, training_timeseriesdataset):
-    # update the path
-    data = pd.read_csv('/home/jovyan/lustre_scratch/cas/european_data_new_temp/country/'+country+'/'+country+'_dma8_non_strict_all_data_timeidx_drop_dups_drop_nas_in_o3_and_met_columns.csv')
-    print('No. of unique stations =', data['station_name'].nunique())
-    
-    
-    # prepare the data
-    train_data_raw = data[lambda x: x.raw_time_idx < training_cutoff]
-    train_val_data_raw = data[lambda x: x.raw_time_idx < (training_cutoff + 365)]
-    val_data_raw = train_val_data_raw[lambda x: x.raw_time_idx >= (training_cutoff)]
-    test_data_raw = data[lambda x: x.raw_time_idx >= (training_cutoff + 365)]
-    
-    print('Train min index:', train_data_raw['raw_time_idx'].min())
-    print('Train min index:', train_data_raw['raw_time_idx'].max())
-    print('Val min index:', val_data_raw['raw_time_idx'].min())
-    print('Val max index:', val_data_raw['raw_time_idx'].max())
-    print('Test min index:', test_data_raw['raw_time_idx'].min())
-    print('Test max index:', test_data_raw['raw_time_idx'].max())
-    
-    print('Train data percentage:', train_data_raw.shape[0]/(train_data_raw.shape[0]+val_data_raw.shape[0]+test_data_raw.shape[0]))
-    print('Val data percentage:', val_data_raw.shape[0]/(train_data_raw.shape[0]+val_data_raw.shape[0]+test_data_raw.shape[0]))
-    print('Test data percentage:', test_data_raw.shape[0]/(train_data_raw.shape[0]+val_data_raw.shape[0]+test_data_raw.shape[0]))
-    
-    training_country = TimeSeriesDataSet.from_dataset(training_timeseriesdataset, train_data_raw, predict=False, stop_randomization=True)
-    validation_country = TimeSeriesDataSet.from_dataset(training_timeseriesdataset, val_data_raw, predict=False, stop_randomization=True)
-    testing_country = TimeSeriesDataSet.from_dataset(training_timeseriesdataset, test_data_raw, predict=False, stop_randomization=True)
-
-    train_dataloader = training_country.to_dataloader(train=True, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
-    val_dataloader = validation_country.to_dataloader(train=False, batch_size=batch_size * 10, num_workers=num_workers, pin_memory=True)
-    test_dataloader = testing_country.to_dataloader(train=False, batch_size=batch_size * 10, num_workers=num_workers, pin_memory=True)
-    
-    return train_dataloader, val_dataloader, test_dataloader
 
 def evaluate_baseline_predictor(testing_dataset):
     
     '''
-    Compute baseline predictor persistence model scores, and return the test data and the baseline predictions.
+    Compute baseline predictor persistence model scores, 
+    and return the test data and the baseline predictions.
     
-    Arguments: the DataLoader for the data that we want to evaluate with the Baseline persistence model.
-    Output: prints the scores, and returns the actual test data and the Baseline predictions.
+    Arguments: the DataLoader for the data that we want to 
+    evaluate with the Baseline persistence model.
+    Output: prints the scores, and returns the 
+    actual test data and the Baseline predictions.
     
     '''
     

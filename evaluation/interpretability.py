@@ -2,105 +2,32 @@
 
 # imports
 
-# wandb
-import wandb
-
 # basic imports
-from matplotlib import pyplot as plt
+import warnings
+from typing import Any, Dict, Union
 import numpy as np
 import pandas as pd
-import fsspec
-import glob
-import copy
-from pathlib import Path
-import warnings
-import os
-
-warnings.filterwarnings("ignore")  # avoid printing out absolute paths
-
-# pytorch lightning and forecasting imports
-
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
-from pytorch_lightning.loggers import TensorBoardLogger
-
 import torch
-from pytorch_forecasting import Baseline, TemporalFusionTransformer, TimeSeriesDataSet
-from pytorch_forecasting.data import GroupNormalizer, TorchNormalizer
-from pytorch_forecasting.metrics import MAE, MAPE, SMAPE, RMSE, PoissonLoss, QuantileLoss, R2
-from pytorch_forecasting.models.temporal_fusion_transformer.tuning import optimize_hyperparameters
+from matplotlib import pyplot as plt
 
-# pytorch lightning + wandb
-
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning import Trainer
-
-
-## scikit-learn imports
-import sklearn
-from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
-from sklearn.metrics import r2_score
-from sklearn.ensemble import RandomForestRegressor
-from sklearn import preprocessing
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import Ridge
-
-from sklearn.preprocessing import PowerTransformer
-from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
+# pytorch and pytorch_forecasting imports
+from pytorch_forecasting import (Baseline, TemporalFusionTransformer,
+                                 TimeSeriesDataSet)
+from pytorch_forecasting.data import TimeSeriesDataSet, TorchNormalizer
+from pytorch_forecasting.metrics import MASE, Metric
+from pytorch_forecasting.utils import to_list
 
 from scipy import stats
 
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+## scikit-learn imports
+from sklearn.metrics import (mean_absolute_error,
+                             mean_absolute_percentage_error,
+                             mean_squared_error, r2_score)
+from sklearn.preprocessing import RobustScaler
 
-from collections import namedtuple
-import copy
-from copy import deepcopy
-import inspect
-from typing import Any, Callable, Dict, Iterable, List, Tuple, Union
-import warnings
 
-import matplotlib.pyplot as plt
-import numpy as np
-from numpy.lib.function_base import iterable
-import pandas as pd
-from pytorch_lightning import LightningModule
-from pytorch_lightning.trainer.states import RunningStage
-from pytorch_lightning.utilities.parsing import AttributeDict, get_init_args
-import scipy.stats
-import torch
-import torch.nn as nn
-from torch.nn.utils import rnn
-from torch.optim.lr_scheduler import LambdaLR, ReduceLROnPlateau
-from torch.utils.data import DataLoader
-from tqdm.autonotebook import tqdm
-import yaml
+warnings.filterwarnings("ignore")  # avoid printing out absolute paths
 
-from pytorch_forecasting.data import TimeSeriesDataSet
-from pytorch_forecasting.data.encoders import EncoderNormalizer, GroupNormalizer, MultiNormalizer, NaNLabelEncoder
-from pytorch_forecasting.metrics import (
-    MAE,
-    MASE,
-    SMAPE,
-    DistributionLoss,
-    Metric,
-    MultiHorizonMetric,
-    MultiLoss,
-    QuantileLoss,
-    convert_torchmetric_to_pytorch_forecasting_metric,
-)
-from pytorch_forecasting.models.nn.embeddings import MultiEmbedding
-from pytorch_forecasting.optim import Ranger
-from pytorch_forecasting.utils import (
-    OutputMixIn,
-    TupleOutputMixIn,
-    apply_to_list,
-    create_mask,
-    get_embedding_size,
-    groupby_apply,
-    move_to_device,
-    to_list,
-)
 
 pd.set_option('max_columns', None)
 
@@ -127,7 +54,8 @@ max_encoder_length = 21
 
 # define some functions that we use to load the datasets, and to evaluate performance.
 
-#  we have robust scaling for all variables, including ozone, and we log transform ozone and pblheight
+#  we have robust scaling for all variables, including ozone, 
+# and we log transform ozone and pblheight
 def load_prepare_ukfrit_data_for_year_robust_features(data, last_day_of_training):
     
     '''
@@ -214,15 +142,47 @@ def load_prepare_ukfrit_data_for_year_robust_features(data, last_day_of_training
 
 # this function for all our test countries
 
-def load_prepare_test_country_data(country, training_timeseriesdataset):
+# this function for all our test countries
+
+# note we need to make sure we are making these datasets from the original training dataset...
+
+def load_prepare_test_country_data(country, training_timeseriesdataset, last_day_of_training):
     data = pd.read_csv('/home/jovyan/lustre_scratch/cas/european_data_new_temp/country/'+country+'/'+country+'_dma8_non_strict_all_data_timeidx_drop_dups_drop_nas_in_o3_and_met_columns.csv')
     print('No. of unique stations =', data['station_name'].nunique())
     
+    # set the 2 negative ozone values we have to a small positive number...
+    data.o3[data.o3 < 0] = 0.01
+
+    # log transform pblheight...as this improved model performance...
+    data['pblheight'] = np.log(1 + data['pblheight'])
+
     # prepare the data
-    train_data_raw = data[lambda x: x.raw_time_idx < training_cutoff]
-    train_val_data_raw = data[lambda x: x.raw_time_idx < (training_cutoff + 365)]
-    val_data_raw = train_val_data_raw[lambda x: x.raw_time_idx >= (training_cutoff)]
-    test_data_raw = data[lambda x: x.raw_time_idx >= (training_cutoff + 365)]
+    
+    # just turn datetime to pandas datetime so we can select on it for spring and summer
+    data['datetime'] = pd.to_datetime(data['datetime'], format='%Y-%m-%d')
+
+    # prepare the data here to have different train/val/test splits...
+    training_cutoff_end_of_year = pd.to_datetime(last_day_of_training).toordinal()
+    val_cutoff_end_of_year = (pd.to_datetime(last_day_of_training) + pd.offsets.DateOffset(years=1)).toordinal()
+    test_cutoff_end_of_year = (pd.to_datetime(last_day_of_training) + pd.offsets.DateOffset(years=2)).toordinal()
+    
+    print(training_cutoff_end_of_year)
+    print(val_cutoff_end_of_year)
+    print(test_cutoff_end_of_year)
+    
+    # prepare the data here to have different train/val/test splits...
+    train_data_raw_pre = data[lambda x: x.raw_time_idx < training_cutoff_end_of_year]
+    train_data_raw_post = data[lambda x: x.raw_time_idx > test_cutoff_end_of_year]
+    train_data_raw = pd.concat([train_data_raw_pre, train_data_raw_post])
+
+    val_data_raw_pre = data[lambda x: x.raw_time_idx <= (val_cutoff_end_of_year)]
+    val_data_raw = val_data_raw_pre[lambda x: x.raw_time_idx > (training_cutoff_end_of_year)]
+
+    test_data_raw_pre = data[lambda x: x.raw_time_idx <= (test_cutoff_end_of_year)]
+    test_data_raw = test_data_raw_pre[lambda x: x.raw_time_idx > (val_cutoff_end_of_year)]
+    
+    print('Min datetime of test data:', test_data_raw.datetime.min())
+    print('Max datetime of test data:', test_data_raw.datetime.max())
     
     print('Train min index:', train_data_raw['raw_time_idx'].min())
     print('Train min index:', train_data_raw['raw_time_idx'].max())
@@ -235,11 +195,12 @@ def load_prepare_test_country_data(country, training_timeseriesdataset):
     print('Val data percentage:', val_data_raw.shape[0]/(train_data_raw.shape[0]+val_data_raw.shape[0]+test_data_raw.shape[0]))
     print('Test data percentage:', test_data_raw.shape[0]/(train_data_raw.shape[0]+val_data_raw.shape[0]+test_data_raw.shape[0]))
     
+    # note this needs to be the original training dataset in from_dataset...
     training_country = TimeSeriesDataSet.from_dataset(training_timeseriesdataset, train_data_raw, predict=False, stop_randomization=True)
     validation_country = TimeSeriesDataSet.from_dataset(training_timeseriesdataset, val_data_raw, predict=False, stop_randomization=True)
     testing_country = TimeSeriesDataSet.from_dataset(training_timeseriesdataset, test_data_raw, predict=False, stop_randomization=True)
 
-    train_dataloader = training_country.to_dataloader(train=True, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
+    train_dataloader = training_country.to_dataloader(train=True, batch_size=batch_size, num_workers=num_workers, pin_memory=True) # possibly train = False here
     val_dataloader = validation_country.to_dataloader(train=False, batch_size=batch_size * 10, num_workers=num_workers, pin_memory=True)
     test_dataloader = testing_country.to_dataloader(train=False, batch_size=batch_size * 10, num_workers=num_workers, pin_memory=True)
     
@@ -685,8 +646,8 @@ def plot_prediction5(
     """
     # plot prediction as normal
     fig = plot_prediction_base(best_tft,
-        x=x_euro_test_full,
-        out=raw_predictions_euro_test_full,
+        x=x_test_full,
+        out=raw_predictions_test_full,
         idx=idx,
         #add_loss_to_title=False,
         show_future_observed=True,
@@ -735,7 +696,6 @@ raw_predictions_test_full.prediction.shape
 
 # these prediction contain no nans
 
-assert not torch.isnan(raw_predictions_val_full.prediction).any()
 assert not torch.isnan(raw_predictions_test_full.prediction).any()
 
 # Let's inspect how the predictive uncertainty changes over the days into the future...
@@ -795,11 +755,13 @@ print('Day 4 middle quantile uncertainty std:', day4_uncert_middle_quantile_std)
 for idx in range(4):  # plot 10 examples
     fig, ax5 = plt.subplots(dpi=200)
     ax5.set_ylabel('Ozone / ppb', fontsize=12)
-    #ax5.text(-0.1, 1.05, 'B', weight='bold', horizontalalignment='center', verticalalignment='center', fontsize=28, transform = ax5.transAxes)
+    #ax5.text(-0.1, 1.05, 'B', weight='bold', horizontalalignment='center', 
+    # verticalalignment='center', fontsize=28, transform = ax5.transAxes)
     #ax5.set_xticks(ticks, fontsize=12)
     #ax5.set_yticks(ticks, fontsize=12)
     ax5.set_title('TFT individual station forecast',fontsize=14)
-    plot_prediction5(best_tft, x=x_euro_test_full, out=raw_predictions_euro_test_full, idx=idx, add_loss_to_title=False, show_future_observed=True, ax=ax5)
+    plot_prediction5(best_tft, x=x_test_full, out=raw_predictions_test_full, idx=idx, 
+                     add_loss_to_title=False, show_future_observed=True, ax=ax5)
     fig.savefig('low_ozone_attention_values_euro_unseen.png', facecolor='white')
 
 
@@ -897,9 +859,65 @@ fig.savefig('predictive_uncertainty_by_day_compare_ukfrit_euro_labelled.png', fa
 # show the figure
 plt.show()
 
-day1_country_uncertainty = np.array([aus_first_last[0], bel_first_last[0], cro_first_last[0], den_first_last[0], fin_first_last[0], 
-                                     gre_first_last[0], ned_first_last[0], nor_first_last[0], pol_first_last[0], por_first_last[0], 
-                                     sp_first_last[0], swe_first_last[0], swi_first_last[0],])
+def raw_preds_uncertainty_euro(country_name):
+    
+    train_dataloader, val_dataloader, test_dataloader = load_prepare_test_country_data(country_name, training, '2010-12-31')
+    raw_predictions_test_full, x_test_full = best_tft.predict(test_dataloader, mode="raw", return_x=True)
+    
+    # I think I wantpredictiondifference between the 1st and last quantile for days 1, 2, 3 and 4
+
+    day1_uncertainty_1st_last_quantile = raw_predictions_test_full.prediction[:, 0, 6] - raw_predictions_test_full.prediction[:, 0, 0]
+    day2_uncertainty_1st_last_quantile = raw_predictions_test_full.prediction[:, 1, 6] - raw_predictions_test_full.prediction[:, 1, 0]
+    day3_uncertainty_1st_last_quantile = raw_predictions_test_full.prediction[:, 2, 6] - raw_predictions_test_full.prediction[:, 2, 0]
+    day4_uncertainty_1st_last_quantile = raw_predictions_test_full.prediction[:, 3, 6] - raw_predictions_test_full.prediction[:, 3, 0]
+    day1_uncertainty_middle_quantile = raw_predictions_test_full.prediction[:, 0, 4] - raw_predictions_test_full.prediction[:, 0, 2]
+    day2_uncertainty_middle_quantile = raw_predictions_test_full.prediction[:, 1, 4] - raw_predictions_test_full.prediction[:, 1, 2]
+    day3_uncertainty_middle_quantile = raw_predictions_test_full.prediction[:, 2, 4] - raw_predictions_test_full.prediction[:, 2, 2]
+    day4_uncertainty_middle_quantile = raw_predictions_test_full.prediction[:, 3, 4] - raw_predictions_test_full.prediction[:, 3, 2]
+
+    day1_uncert_1st_last_quantile_mean = day1_uncertainty_1st_last_quantile.mean()
+    day2_uncert_1st_last_quantile_mean = day2_uncertainty_1st_last_quantile.mean()
+    day3_uncert_1st_last_quantile_mean = day3_uncertainty_1st_last_quantile.mean()
+    day4_uncert_1st_last_quantile_mean = day4_uncertainty_1st_last_quantile.mean()
+        
+    day1_uncert_middle_quantile_mean = day1_uncertainty_middle_quantile.mean()
+    day2_uncert_middle_quantile_mean = day2_uncertainty_middle_quantile.mean()
+    day3_uncert_middle_quantile_mean = day3_uncertainty_middle_quantile.mean()
+    day4_uncert_middle_quantile_mean = day4_uncertainty_middle_quantile.mean()
+    
+    first_last_quantiles_days = np.array([day1_uncert_1st_last_quantile_mean, day2_uncert_1st_last_quantile_mean, day3_uncert_1st_last_quantile_mean, day4_uncert_1st_last_quantile_mean])
+    middle_quantiles_days = np.array([day1_uncert_middle_quantile_mean, day2_uncert_middle_quantile_mean, day3_uncert_middle_quantile_mean, day4_uncert_middle_quantile_mean])
+    
+    return first_last_quantiles_days, middle_quantiles_days
+
+aus_first_last, aus_middle = raw_preds_uncertainty_euro("Austria")
+bel_first_last, bel_middle = raw_preds_uncertainty_euro("Belgium")
+cro_first_last, cro_middle = raw_preds_uncertainty_euro("Croatia")
+den_first_last, den_middle = raw_preds_uncertainty_euro("Denmark")
+fin_first_last, fin_middle = raw_preds_uncertainty_euro("Finland")
+gre_first_last, gre_middle = raw_preds_uncertainty_euro("Greece")
+ned_first_last, ned_middle = raw_preds_uncertainty_euro("Netherlands")
+nor_first_last, nor_middle = raw_preds_uncertainty_euro("Norway")
+pol_first_last, pol_middle = raw_preds_uncertainty_euro("Poland")
+por_first_last, por_middle = raw_preds_uncertainty_euro("Portugal")
+sp_first_last, sp_middle = raw_preds_uncertainty_euro("Spain")
+swe_first_last, swe_middle = raw_preds_uncertainty_euro("Sweden")
+swi_first_last, swi_middle = raw_preds_uncertainty_euro("Switzerland")
+
+per_country_skills = pd.DataFrame({'Country': ['Austria', 'Belgium', 'Croatia', 'Denmark', 'Finland', 'Greece', 'Netherlands', 'Norway', 'Poland', 'Portugal', 'Spain', 'Sweden', 'Switzerland'], 
+                   'r2': [0.82757466, 0.75188547 , 0.862780, 0.68250127, 0.68214668, 0.7989247, 0.71669933, 0.65627735, 0.808919, 0.78460688, 0.74346525, 0.67164714, 0.81969449],
+                   'mae': [5.089399, 4.8884, 4.84806, 4.42236, 4.1050, 5.679457, 5.0985, 4.15329, 4.782229, 5.64120, 5.025228, 4.0878, 5.35674],
+                   'rmse': [6.5795, 6.74118, 6.1585, 5.9673, 5.324778, 7.54055, 6.68449, 5.35059, 6.24731, 7.56496, 6.6261, 5.39467, 6.91331],
+                   'mape': [0.220851, 0, 0.15997, 0.179041, 0.151081, 0.190024, 0, 0.154800, 0.200755, 0.186980, 0.166011, 0.138209, 0.2396889]
+                   })
+
+day1_country_uncertainty = np.array([aus_first_last[0], bel_first_last[0], 
+                                     cro_first_last[0], den_first_last[0],
+                                     fin_first_last[0], gre_first_last[0],
+                                     ned_first_last[0], nor_first_last[0],
+                                     pol_first_last[0], nor_first_last[0], 
+                                     sp_first_last[0], swe_first_last[0], 
+                                     swi_first_last[0],])
                                       
 
 # make a figure

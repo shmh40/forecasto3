@@ -2,13 +2,7 @@
 # We do this for datasets both with and without NO2.
 
 # imports
-from urllib.request import urlopen
-import json
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import datetime
-import glob
 
 pd.set_option('display.max_columns', None)
 

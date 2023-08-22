@@ -1,21 +1,21 @@
 # TOAR: downloading environmental data
 
-# This script downloads all available daily environmental data for variables such as temperature, pressure etc. on a daily scale from the TOAR (V1) database for a particular country. The script also downloads and appends station attributes for each station in the country being downloaded.
+# This script downloads all available daily environmental data for variables 
+# such as temperature, pressure etc. on a daily scale from the TOAR (V1) database 
+# for a particular country. The script also downloads and appends station attributes 
+# for each station in the country being downloaded.
 
 # Imports for this script
 
 import pandas as pd
-import numpy as np
-import datetime
-from datetime import datetime, timedelta
 
 from urllib.request import urlopen
 import json
-import glob
 import os
 from functools import reduce
 
-# set the global variables: the country we are selecting, and the date of download if desired.
+# set the global variables: the country we are selecting, 
+# and the date of download if desired.
 
 country_for_url = 'Sweden'
 country = 'Sweden'
@@ -42,12 +42,15 @@ response = urlopen(BASEURL + URL1).read().decode('utf-8')
 print("response = ", response[:200], " ... ")
 metadata = json.loads(response)
 
-# Here we are downloading all dataseries for our specified search. This takes a while to run.
+# Here we are downloading all dataseries for our specified search. 
+# This takes a while to run.
 
 # create a dataframe...
 df_test = pd.DataFrame()
 
-# loop to download the dataseries for the variable of interest, at all stations where it is present, alongside station metadata and static attributes for the station that the variable dataseries is coming from.
+# loop to download the dataseries for the variable of interest, at all stations 
+# where it is present, alongside station metadata and static attributes for 
+# the station that the variable dataseries is coming from.
 
 for s in metadata:
     # find all the dataseries
@@ -65,7 +68,8 @@ for s in metadata:
         print(data['metadata']['parameter_name'])
         print(data['metadata']['station_name'], data['metadata']['station_country'])
             
-        # may need to change between average values and dma8, depending on whether we are looking for env or dma8
+        # may need to change between average values and dma8, 
+        # depending on whether we are looking for env or dma8
         new_row = pd.DataFrame({'series_id': series, 
                        'average_values': data['mean'], 
                        #'dma8': data['dma8eu_strict'],
@@ -79,8 +83,10 @@ for s in metadata:
                        'station_rel_etopo_alt':data['metadata']['station_etopo_relative_alt'],
                        'lat':s[4],'lon':s[5],'nox_emi':data['metadata']['station_nox_emissions'], 
                        'omi_nox':data['metadata']['station_omi_no2_column'],
-                       'station_name':data['metadata']['station_name'], 'station_type':data['metadata']['station_type'],
-                       'alt':data['metadata']['station_alt'], 'landcover':data['metadata']['station_dominant_landcover'],
+                       'station_name':data['metadata']['station_name'], 
+                       'station_type':data['metadata']['station_type'],
+                       'alt':data['metadata']['station_alt'], 
+                       'landcover':data['metadata']['station_dominant_landcover'],
                        'pop_density':data['metadata']['station_population_density'],
                        'max_5km_pop_density':data['metadata']['station_max_population_density_5km'],
                        'max_25km_pop_density':data['metadata']['station_max_population_density_25km'],
@@ -89,7 +95,8 @@ for s in metadata:
                        'toar_category':data['metadata']['station_toar_category'], 
                        'measurement_method':data['metadata']['parameter_measurement_method']})
         #print(new_row)
-            # append all these individual series to the initially empty dataframe that was instantiated earlier
+            # append all these individual series to the initially empty dataframe 
+            # that was instantiated earlier
         #df_test = df_test.append(new_row, ignore_index = True)
         df_test = pd.concat([df_test, new_row], axis=0, ignore_index = True)
 
@@ -117,34 +124,67 @@ df_cloudcover['cloudcover'] = df_cloudcover['average_values']
 
 # drop unnecessary columns...
 
-df_temp_dropped_cols = df_temp.drop(['average_values', 'series_id', 'variable_name', 'variable_label', 'units', 'measurement_method'], axis=1)
-df_press_dropped_cols = df_press.drop(['average_values', 'series_id', 'variable_name', 'variable_label', 'units', 'measurement_method'], axis=1)
-df_u_dropped_cols = df_u.drop(['average_values', 'series_id', 'variable_name', 'variable_label', 'units', 'measurement_method'], axis=1)
-df_v_dropped_cols = df_v.drop(['average_values', 'series_id', 'variable_name', 'variable_label', 'units', 'measurement_method'], axis=1)
-df_totprecip_dropped_cols = df_totprecip.drop(['average_values', 'series_id', 'variable_name', 'variable_label', 'units', 'measurement_method'], axis=1)
-df_pblheight_dropped_cols = df_pblheight.drop(['average_values', 'series_id', 'variable_name', 'variable_label', 'units', 'measurement_method'], axis=1)
-df_relhum_dropped_cols = df_relhum.drop(['average_values', 'series_id', 'variable_name', 'variable_label', 'units', 'measurement_method'], axis=1)
-df_cloudcover_dropped_cols = df_cloudcover.drop(['average_values', 'series_id', 'variable_name', 'variable_label', 'units', 'measurement_method'], axis=1)
+df_temp_dropped_cols = df_temp.drop(['average_values', 'series_id', 'variable_name', 
+                                     'variable_label', 'units', 'measurement_method'], 
+                                     axis=1)
+df_press_dropped_cols = df_press.drop(['average_values', 'series_id', 'variable_name', 
+                                       'variable_label', 'units', 'measurement_method'],
+                                         axis=1)
+df_u_dropped_cols = df_u.drop(['average_values', 'series_id', 'variable_name', 
+                               'variable_label', 'units', 'measurement_method'], 
+                               axis=1)
+df_v_dropped_cols = df_v.drop(['average_values', 'series_id', 'variable_name', 
+                               'variable_label', 'units', 'measurement_method'], 
+                               axis=1)
+df_totprecip_dropped_cols = df_totprecip.drop(['average_values', 'series_id', 
+                                               'variable_name', 'variable_label', 
+                                               'units', 'measurement_method'], 
+                                               axis=1)
+df_pblheight_dropped_cols = df_pblheight.drop(['average_values', 'series_id', 
+                                               'variable_name', 'variable_label', 
+                                               'units', 'measurement_method'], 
+                                               axis=1)
+df_relhum_dropped_cols = df_relhum.drop(['average_values', 'series_id', 'variable_name',
+                                         'variable_label', 'units', 
+                                         'measurement_method'], 
+                                         axis=1)
+df_cloudcover_dropped_cols = df_cloudcover.drop(['average_values', 'series_id', 
+                                                 'variable_name', 'variable_label', 
+                                                 'units', 'measurement_method'], 
+                                                 axis=1)
 
 # check that all variables are present
 try:
-    dfs = [df_temp_dropped_cols, df_press_dropped_cols, df_u_dropped_cols, df_v_dropped_cols, df_totprecip_dropped_cols, df_pblheight_dropped_cols, df_relhum_dropped_cols, df_cloudcover_dropped_cols]
+    dfs = [df_temp_dropped_cols, df_press_dropped_cols, df_u_dropped_cols, 
+           df_v_dropped_cols, df_totprecip_dropped_cols, df_pblheight_dropped_cols, 
+           df_relhum_dropped_cols, df_cloudcover_dropped_cols]
 except: 
     print('One or more of the dfs is missing')
     
     
 #merge all DataFrames into one
-final_df = reduce(lambda  left,right: pd.merge(left,right,on=['datetime', 'country', 'station_name', 'lat', 'lon', 'alt', 'station_etopo_alt', 
-                                                              'station_rel_etopo_alt', 'station_type', 	'landcover', 
-                                                              'toar_category', 'pop_density', 'max_5km_pop_density', 'max_25km_pop_density', 
-                                                              'nightlight_1km', 'nightlight_max_25km', 'nox_emi', 'omi_nox'],
+final_df = reduce(lambda  left,right: pd.merge(left,right,on=['datetime', 'country', 
+                                                              'station_name', 'lat', 
+                                                              'lon', 'alt', 
+                                                              'station_etopo_alt', 
+                                                              'station_rel_etopo_alt', 
+                                                              'station_type', 	
+                                                              'landcover', 
+                                                              'toar_category', 
+                                                              'pop_density', 
+                                                              'max_5km_pop_density', 
+                                                              'max_25km_pop_density', 
+                                                              'nightlight_1km', 
+                                                              'nightlight_max_25km', 
+                                                              'nox_emi', 'omi_nox'],
                                             how='outer'), dfs)
 
 
 
 # sort, set datetime and drop nans
 final_df_sorted = final_df.sort_values(['station_name', 'datetime'], ignore_index=True)
-final_df_sorted['datetime'] = pd.to_datetime(final_df_sorted['datetime'], format='%Y-%m-%d')
+final_df_sorted['datetime'] = pd.to_datetime(final_df_sorted['datetime'], 
+                                             format='%Y-%m-%d')
 #final_df_sorted = final_df_sorted.replace(-1.0, np.nan)
 #final_df_sorted = final_df_sorted.replace(-999.0, np.nan)
 final_df_sorted_dropna = final_df_sorted.dropna()
